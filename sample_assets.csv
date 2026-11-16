@@ -1,0 +1,3 @@
+organization,asset_name,vendor,product,version,environment,owner,notes
+Summerlinc,Example Windows Server,Microsoft,Windows Server,2022,Production,IT Admin,Example only - replace with authorized asset data
+Summerlinc,Example Chrome Endpoint,Google,Chrome,157,Office,IT Admin,Example only - replace with authorized asset data
