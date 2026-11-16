@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.db
+.venv/
+venv/
+build/
+dist/
+installer_output/
+*.spec
+.env
+.env.*
