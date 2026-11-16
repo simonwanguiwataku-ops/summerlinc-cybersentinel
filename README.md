@@ -60,3 +60,7 @@ Labels: Critical (85–100), High (70–84), Elevated (50–69), Monitor (0–49
 - CISA KEV catalog: https://www.cisa.gov/known-exploited-vulnerabilities-catalog
 - CISA JSON feed: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
 - NVD CVE API: https://services.nvd.nist.gov/rest/json/cves/2.0
+
+## Automated Windows release pipeline
+
+Every push to `main` runs the Windows CI workflow in `.github/workflows/windows-build.yml`. The workflow compiles the source, runs the unit tests, packages the desktop application with PyInstaller, compiles the Inno Setup installer, and uploads the portable application folder and installer as a GitHub Actions artifact. Artifacts are retained for 14 days. A successful CI build verifies packaging, but a final manual smoke test on a Windows PC is still required before production release.
