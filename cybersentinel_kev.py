@@ -4,6 +4,7 @@ import urllib.request
 import urllib.error
 import csv
 import threading
+import queue
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from datetime import datetime, timezone
@@ -257,9 +258,25 @@ class App(tk.Tk):
         self.geometry("1180x760")
         self.minsize(920, 600)
         self.status = tk.StringVar(value=f"Local database: {DB_PATH}")
+        self.ui_messages = queue.Queue()
         self.build_ui()
+        self.after(150, self.process_ui_messages)
         self.refresh_kev()
         self.refresh_assets()
+
+    def process_ui_messages(self):
+        """Apply worker-thread results only on Tk's main thread."""
+        try:
+            while True:
+                message, refresh_dashboard = self.ui_messages.get_nowait()
+                self.status.set(message)
+                if refresh_dashboard:
+                    self.refresh_kev()
+                    self.refresh_assets()
+                    self.refresh_dashboard()
+        except queue.Empty:
+            pass
+        self.after(150, self.process_ui_messages)
 
     def build_ui(self):
         top = ttk.Frame(self, padding=12)
@@ -347,8 +364,10 @@ class App(tk.Tk):
     def sync(self):
         self.status.set("Connecting to the official CISA KEV feed…")
         def callback(msg):
-            self.after(0, lambda: (self.status.set(msg), self.refresh_kev(), self.refresh_assets(), self.refresh_dashboard()))
-        threading.Thread(target=sync_kev, args=(callback,), daemon=True).start()
+            # Worker threads communicate through a queue; Tkinter is touched only
+            # by process_ui_messages() on the main application thread.
+            self.ui_messages.put((msg, True))
+        threading.Thread(target=sync_kev, args=(callback,), daemon=True, name="CISA-KEV-sync").start()
 
     def refresh_kev(self):
         q = norm(self.search_var.get())
@@ -408,8 +427,8 @@ class App(tk.Tk):
                 msg = f"NVD enrichment saved for {cve_id}." if status == "found" else f"NVD returned no CVE record for {cve_id}."
             except Exception as exc:
                 msg = f"NVD enrichment failed for {cve_id}: {exc}"
-            self.after(0, lambda: (self.status.set(msg), self.refresh_dashboard()))
-        threading.Thread(target=worker, daemon=True).start()
+            self.ui_messages.put((msg, True))
+        threading.Thread(target=worker, daemon=True, name="NVD-enrichment").start()
 
     def export_kev(self):
         if not self.kev_rows:
