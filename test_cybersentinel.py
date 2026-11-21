@@ -30,7 +30,8 @@ class CyberSentinelLogicTests(unittest.TestCase):
     def test_notebook_is_created_before_first_use_in_gui_builder(self):
         import ast
         import inspect
-        tree = ast.parse(inspect.getsource(app.App.build_ui))
+        import textwrap
+        tree = ast.parse(textwrap.dedent(inspect.getsource(app.App.build_ui)))
         notebook_assignment = None
         first_notebook_read = None
         for node in ast.walk(tree):
@@ -46,6 +47,24 @@ class CyberSentinelLogicTests(unittest.TestCase):
         self.assertIsNotNone(first_notebook_read, "build_ui must use the Notebook")
         self.assertLess(notebook_assignment, first_notebook_read,
                         "Notebook must be initialized before any access")
+
+    def test_application_window_initializes_and_builds_tabs(self):
+        import tempfile
+        from pathlib import Path
+        original_db_path = app.DB_PATH
+        root = None
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                app.DB_PATH = Path(tmp) / "cybersentinel_test.sqlite3"
+                app.init_db()
+                root = app.App()
+                root.update_idletasks()
+                self.assertEqual(len(root.tabs.tabs()), 3)
+                self.assertEqual(root.tabs.tab(root.tabs.tabs()[0], "text"), "Risk Dashboard")
+        finally:
+            if root is not None:
+                root.destroy()
+            app.DB_PATH = original_db_path
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
