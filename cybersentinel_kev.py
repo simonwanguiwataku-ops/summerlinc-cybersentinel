@@ -126,6 +126,24 @@ def sync_kev(status_callback):
 def norm(s):
     return " ".join((s or "").lower().replace("-", " ").replace("_", " ").split())
 
+def search_kev_rows(connection, query):
+    """Search catalogue fields while preserving CVE punctuation such as hyphens."""
+    q = (query or "").strip().lower()
+    if q:
+        like = f"%{q}%"
+        return connection.execute(
+            """SELECT * FROM kev
+               WHERE lower(cve_id) LIKE ?
+                  OR lower(vendor_project) LIKE ?
+                  OR lower(product) LIKE ?
+                  OR lower(vulnerability_name) LIKE ?
+               ORDER BY date_added DESC""",
+            (like, like, like, like)
+        ).fetchall()
+    return connection.execute(
+        "SELECT * FROM kev ORDER BY date_added DESC LIMIT 1000"
+    ).fetchall()
+
 
 def version_tokens(value):
     """Conservative tokenization for common dotted software versions."""
@@ -390,14 +408,8 @@ class App(tk.Tk):
         threading.Thread(target=run_sync, daemon=True, name="CISA-KEV-sync").start()
 
     def refresh_kev(self):
-        q = norm(self.search_var.get())
         with db() as con:
-            if q:
-                like = f"%{q}%"
-                rows = con.execute("""SELECT * FROM kev WHERE lower(cve_id) LIKE ? OR lower(vendor_project) LIKE ? OR lower(product) LIKE ? OR lower(vulnerability_name) LIKE ? ORDER BY date_added DESC""",
-                                   (like,like,like,like)).fetchall()
-            else:
-                rows = con.execute("SELECT * FROM kev ORDER BY date_added DESC LIMIT 1000").fetchall()
+            rows = search_kev_rows(con, self.search_var.get())
         self.kev_rows = rows
         self.kev_tree.delete(*self.kev_tree.get_children())
         for r in rows:
