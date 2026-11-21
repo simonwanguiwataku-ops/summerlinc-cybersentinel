@@ -295,7 +295,7 @@ class App(tk.Tk):
         ttk.Label(self, text="Discover. Test. Protect. Verify.", padding=(12,0)).pack(anchor="w")
         # Prominent feedback: the former bottom-only status was easy to miss.
         status_bar = ttk.Frame(self, padding=(12, 5))
-        status_bar.pack(fill="x", before=self.tabs)
+        status_bar.pack(fill="x")
         ttk.Label(status_bar, text="LIVE STATUS:", font=("Segoe UI", 9, "bold")).pack(side="left")
         ttk.Label(status_bar, textvariable=self.status, wraplength=900).pack(side="left", padx=(8, 0))
 
