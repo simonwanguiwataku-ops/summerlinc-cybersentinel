@@ -163,12 +163,47 @@ def compare_versions(a, b):
     bb += [(0, 0)] * (n - len(bb))
     return (aa > bb) - (aa < bb)
 
+def split_cpe23(criteria):
+    """Split a formatted CPE 2.3 string on unescaped colons."""
+    parts, current = [], []
+    escaped = False
+    for char in (criteria or ""):
+        if escaped:
+            current.append(char)
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == ":":
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+    if escaped:
+        current.append("\\")
+    parts.append("".join(current))
+    return parts
+
+
 def cpe_vendor_product(criteria):
-    parts = (criteria or "").split(":")
-    # CPE 2.3 format: cpe:2.3:<part>:<vendor>:<product>:<version>:...
+    # CPE 2.3: cpe:2.3:<part>:<vendor>:<product>:<version>:...
+    parts = split_cpe23(criteria)
     if len(parts) >= 6 and parts[0] == "cpe" and parts[1] == "2.3":
-        return norm(parts[3].replace("\\\\:", ":")), norm(parts[4].replace("\\\\:", ":")), parts[5]
+        return norm(parts[3]), norm(parts[4]), parts[5]
     return "", "", ""
+
+
+def asset_assessment_label(asset, matches):
+    """Describe evidence coverage; zero matches must never imply the asset is safe."""
+    if not matches:
+        return "No KEV candidates — coverage not established"
+    states = [state.lower() for _, state in matches]
+    if any("affected version range" in state for state in states):
+        return "Potential affected-version finding"
+    if any("review" in state or "unknown" in state or "enrichment" in state for state in states):
+        return "Analyst review required"
+    if any("outside listed affected range" in state for state in states):
+        return "Candidates outside listed ranges"
+    return "Candidates require validation"
 
 def extract_cpe_matches(node):
     found = []
@@ -380,18 +415,19 @@ class App(tk.Tk):
         bar = ttk.Frame(self.asset_tab)
         bar.pack(fill="x", pady=(0,8))
         ttk.Button(bar, text="Add asset", command=self.add_asset).pack(side="left")
+        ttk.Button(bar, text="Edit selected asset", command=self.edit_selected_asset).pack(side="left", padx=6)
         ttk.Button(bar, text="Import assets CSV", command=self.import_assets).pack(side="left", padx=6)
         ttk.Button(bar, text="Export matched findings CSV", command=self.export_matches).pack(side="left")
         ttk.Button(bar, text="Refresh matches", command=self.refresh_assets).pack(side="right")
-        cols = ("asset_name","vendor","product","version","environment","matches")
+        cols = ("asset_name","vendor","product","version","environment","matches","assessment")
         self.asset_tree = ttk.Treeview(self.asset_tab, columns=cols, show="headings", height=19)
-        labels = {"asset_name":"Asset","vendor":"Vendor","product":"Product","version":"Version","environment":"Environment","matches":"KEV matches"}
-        widths = {"asset_name":190,"vendor":150,"product":190,"version":100,"environment":130,"matches":100}
+        labels = {"asset_name":"Asset","vendor":"Vendor","product":"Product","version":"Version","environment":"Environment","matches":"KEV candidates","assessment":"Assessment"}
+        widths = {"asset_name":145,"vendor":110,"product":150,"version":85,"environment":105,"matches":95,"assessment":280}
         for c in cols:
             self.asset_tree.heading(c, text=labels[c])
             self.asset_tree.column(c, width=widths[c], anchor="w")
         self.asset_tree.pack(fill="both", expand=True)
-        ttk.Label(self.asset_tab, text="Matches are preliminary. NVD CPE enrichment is required before version-aware conclusions; a match is not proof of exploitability.", foreground="#9a5b00", wraplength=1000).pack(anchor="w", pady=8)
+        ttk.Label(self.asset_tab, text="Enter one installed software product per row (example: vendor=Apache, product=Log4j, version=2.14.1). Hardware model alone is not a software inventory. Zero KEV candidates does NOT mean the device is safe.", foreground="#9a5b00", wraplength=1000).pack(anchor="w", pady=8)
 
     def sync(self):
         self.status.set("SYNC STARTED — contacting the official CISA KEV feed. Please wait…")
@@ -472,22 +508,60 @@ class App(tk.Tk):
             for r in self.kev_rows: w.writerow([r[k] for k in r.keys()])
         self.status.set(f"Exported {len(self.kev_rows)} KEV records to {path}")
 
-    def add_asset(self):
-        win = tk.Toplevel(self); win.title("Add authorized asset"); win.resizable(False,False)
-        fields = ["organization","asset_name","vendor","product","version","environment","owner","notes"]
-        vars = {}
-        for i, name in enumerate(fields):
-            ttk.Label(win,text=name.replace("_"," ").title()).grid(row=i,column=0,sticky="w",padx=10,pady=4)
-            vars[name]=tk.StringVar()
-            ttk.Entry(win,textvariable=vars[name],width=42).grid(row=i,column=1,padx=10,pady=4)
-        def save():
-            if not vars["asset_name"].get().strip() or not vars["vendor"].get().strip() or not vars["product"].get().strip():
-                messagebox.showerror("Missing fields","Asset name, vendor and product are required."); return
+    def add_asset(self, asset_id=None):
+        """Add or edit one software inventory record associated with an authorized host."""
+        existing = None
+        if asset_id is not None:
             with db() as con:
-                con.execute("""INSERT INTO assets(organization,asset_name,vendor,product,version,environment,owner,notes,created_at) VALUES(?,?,?,?,?,?,?,?,?)""",
-                            tuple(vars[k].get().strip() for k in fields)+(datetime.now(timezone.utc).isoformat(),))
-            win.destroy(); self.refresh_assets()
-        ttk.Button(win,text="Save asset",command=save).grid(row=len(fields),column=1,sticky="e",padx=10,pady=10)
+                existing = con.execute("SELECT * FROM assets WHERE id=?", (asset_id,)).fetchone()
+            if not existing:
+                messagebox.showerror("Asset not found", "The selected asset no longer exists.")
+                return
+        win = tk.Toplevel(self)
+        win.title("Edit authorized software inventory" if existing else "Add authorized software inventory")
+        win.resizable(False, False)
+        fields = ["organization", "asset_name", "vendor", "product", "version", "environment", "owner", "notes"]
+        vars = {}
+        ttk.Label(
+            win,
+            text="Record installed software, not just the computer brand/model. Use the software publisher, product name and exact version.",
+            wraplength=420,
+            foreground="#8a5200"
+        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(10, 6))
+        for i, name in enumerate(fields, start=1):
+            ttk.Label(win, text=name.replace("_", " ").title()).grid(row=i, column=0, sticky="w", padx=10, pady=4)
+            initial = str(existing[name] or "") if existing else ""
+            vars[name] = tk.StringVar(value=initial)
+            ttk.Entry(win, textvariable=vars[name], width=42).grid(row=i, column=1, padx=10, pady=4)
+        def save():
+            values = {key: vars[key].get().strip() for key in fields}
+            if not values["asset_name"] or not values["vendor"] or not values["product"]:
+                messagebox.showerror("Missing fields", "Asset name, software vendor and software product are required.")
+                return
+            with db() as con:
+                if existing:
+                    con.execute(
+                        """UPDATE assets SET organization=?,asset_name=?,vendor=?,product=?,version=?,environment=?,owner=?,notes=? WHERE id=?""",
+                        tuple(values[key] for key in fields) + (asset_id,)
+                    )
+                else:
+                    con.execute(
+                        """INSERT INTO assets(organization,asset_name,vendor,product,version,environment,owner,notes,created_at) VALUES(?,?,?,?,?,?,?,?,?)""",
+                        tuple(values[key] for key in fields) + (datetime.now(timezone.utc).isoformat(),)
+                    )
+            win.destroy()
+            self.refresh_assets()
+        ttk.Button(win, text="Save changes" if existing else "Save software record", command=save).grid(row=len(fields)+1, column=1, sticky="e", padx=10, pady=10)
+
+    def edit_selected_asset(self):
+        selected = self.asset_tree.selection()
+        if not selected:
+            messagebox.showinfo("Select an asset", "Select an asset row before choosing Edit selected asset.")
+            return
+        try:
+            self.add_asset(int(selected[0]))
+        except (TypeError, ValueError):
+            messagebox.showerror("Invalid selection", "The selected asset identifier is invalid.")
 
     def import_assets(self):
         path=filedialog.askopenfilename(filetypes=[("CSV","*.csv")])
@@ -558,7 +632,8 @@ class App(tk.Tk):
         self.asset_tree.delete(*self.asset_tree.get_children())
         for a, matches in self.get_matches():
             iid=str(a["id"])
-            self.asset_tree.insert("", "end", iid=iid, values=(a["asset_name"],a["vendor"],a["product"],a["version"],a["environment"],len(matches)))
+            assessment = asset_assessment_label(a, matches)
+            self.asset_tree.insert("", "end", iid=iid, values=(a["asset_name"],a["vendor"],a["product"],a["version"],a["environment"],len(matches),assessment))
         self.refresh_dashboard()
 
     def refresh_dashboard(self):
