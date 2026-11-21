@@ -69,6 +69,32 @@ def init_db():
             raw_json TEXT NOT NULL
         )""")
 
+
+ASSET_FIELDS = ("organization", "asset_name", "vendor", "product", "version", "environment", "owner", "notes")
+
+
+def save_asset_record(values, asset_id=None):
+    """Insert or update an asset while preserving its stable database ID."""
+    cleaned = {key: str(values.get(key, "") or "").strip() for key in ASSET_FIELDS}
+    if not cleaned["asset_name"] or not cleaned["vendor"] or not cleaned["product"]:
+        raise ValueError("Asset name, software vendor and software product are required.")
+    with db() as con:
+        if asset_id is None:
+            cursor = con.execute(
+                """INSERT INTO assets(organization,asset_name,vendor,product,version,environment,owner,notes,created_at)
+                   VALUES(?,?,?,?,?,?,?,?,?)""",
+                tuple(cleaned[key] for key in ASSET_FIELDS) + (datetime.now(timezone.utc).isoformat(),)
+            )
+            return cursor.lastrowid
+        cursor = con.execute(
+            """UPDATE assets SET organization=?,asset_name=?,vendor=?,product=?,version=?,environment=?,owner=?,notes=?
+               WHERE id=?""",
+            tuple(cleaned[key] for key in ASSET_FIELDS) + (asset_id,)
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("The selected asset no longer exists.")
+        return asset_id
+
 def sync_kev(status_callback):
     try:
         req = urllib.request.Request(KEV_URL, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
@@ -538,17 +564,11 @@ class App(tk.Tk):
             if not values["asset_name"] or not values["vendor"] or not values["product"]:
                 messagebox.showerror("Missing fields", "Asset name, software vendor and software product are required.")
                 return
-            with db() as con:
-                if existing:
-                    con.execute(
-                        """UPDATE assets SET organization=?,asset_name=?,vendor=?,product=?,version=?,environment=?,owner=?,notes=? WHERE id=?""",
-                        tuple(values[key] for key in fields) + (asset_id,)
-                    )
-                else:
-                    con.execute(
-                        """INSERT INTO assets(organization,asset_name,vendor,product,version,environment,owner,notes,created_at) VALUES(?,?,?,?,?,?,?,?,?)""",
-                        tuple(values[key] for key in fields) + (datetime.now(timezone.utc).isoformat(),)
-                    )
+            try:
+                save_asset_record(values, asset_id if existing else None)
+            except ValueError as exc:
+                messagebox.showerror("Unable to save asset", str(exc))
+                return
             win.destroy()
             self.refresh_assets()
         ttk.Button(win, text="Save changes" if existing else "Save software record", command=save).grid(row=len(fields)+1, column=1, sticky="e", padx=10, pady=10)
