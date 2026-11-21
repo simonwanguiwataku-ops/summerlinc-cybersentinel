@@ -27,6 +27,26 @@ class CyberSentinelLogicTests(unittest.TestCase):
         self.assertEqual(ransomware - base, 20)
         self.assertLessEqual(app.risk_priority_score(record, "Affected version range", 10.0), 100)
 
+    def test_kev_search_preserves_cve_hyphens(self):
+        import sqlite3
+        con = sqlite3.connect(":memory:")
+        con.row_factory = app.sqlite3.Row
+        con.execute("""CREATE TABLE kev (
+            cve_id TEXT, vendor_project TEXT, product TEXT,
+            vulnerability_name TEXT, date_added TEXT,
+            known_ransomware TEXT, due_date TEXT
+        )""")
+        con.execute(
+            "INSERT INTO kev VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("CVE-2021-44228", "Apache", "Log4j2",
+             "Apache Log4j2 Remote Code Execution Vulnerability",
+             "2021-12-10", "Known", "2021-12-24")
+        )
+        rows = app.search_kev_rows(con, "CVE-2021-44228")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["cve_id"], "CVE-2021-44228")
+        con.close()
+
     def test_notebook_is_created_before_first_use_in_gui_builder(self):
         import ast
         import inspect
