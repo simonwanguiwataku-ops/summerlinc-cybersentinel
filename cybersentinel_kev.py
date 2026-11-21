@@ -5,6 +5,7 @@ import urllib.error
 import csv
 import threading
 import queue
+from contextlib import contextmanager
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from datetime import datetime, timezone
@@ -17,10 +18,19 @@ USER_AGENT = "Summerlinc-CyberSentinel-KEV/0.3 (local desktop client)"
 
 APP_DIR.mkdir(parents=True, exist_ok=True)
 
+@contextmanager
 def db():
+    """Yield a configured SQLite connection and always close its file handle."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 def init_db():
     with db() as con:
