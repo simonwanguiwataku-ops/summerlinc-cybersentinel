@@ -50,21 +50,23 @@ class CyberSentinelLogicTests(unittest.TestCase):
 
     def test_application_window_initializes_and_builds_tabs(self):
         import tempfile
+        import shutil
         from pathlib import Path
         original_db_path = app.DB_PATH
+        temp_dir = Path(tempfile.mkdtemp(prefix="cybersentinel-test-"))
         root = None
         try:
-            with tempfile.TemporaryDirectory() as tmp:
-                app.DB_PATH = Path(tmp) / "cybersentinel_test.sqlite3"
-                app.init_db()
-                root = app.App()
-                root.update_idletasks()
-                self.assertEqual(len(root.tabs.tabs()), 3)
-                self.assertEqual(root.tabs.tab(root.tabs.tabs()[0], "text"), "Risk Dashboard")
+            app.DB_PATH = temp_dir / "cybersentinel_test.sqlite3"
+            app.init_db()
+            root = app.App()
+            root.update_idletasks()
+            self.assertEqual(len(root.tabs.tabs()), 3)
+            self.assertEqual(root.tabs.tab(root.tabs.tabs()[0], "text"), "Risk Dashboard")
         finally:
             if root is not None:
                 root.destroy()
             app.DB_PATH = original_db_path
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
