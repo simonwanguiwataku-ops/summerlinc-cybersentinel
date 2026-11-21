@@ -47,6 +47,29 @@ class CyberSentinelLogicTests(unittest.TestCase):
         self.assertEqual(rows[0]["cve_id"], "CVE-2021-44228")
         con.close()
 
+    def test_cpe_parser_handles_escaped_colons(self):
+        vendor, product, version = app.cpe_vendor_product(
+            r"cpe:2.3:a:apache:log4j\:core:2.14.1:*:*:*:*:*:*"
+        )
+        self.assertEqual(vendor, "apache")
+        self.assertEqual(product, "log4j:core")
+        self.assertEqual(version, "2.14.1")
+
+    def test_zero_candidates_are_not_reported_as_safe(self):
+        asset = {"asset_name": "laptop"}
+        self.assertIn(
+            "coverage not established",
+            app.asset_assessment_label(asset, [])
+        )
+
+    def test_asset_assessment_flags_affected_version_as_potential_finding(self):
+        asset = {"asset_name": "server"}
+        fake_kev = {"cve_id": "CVE-2021-44228"}
+        self.assertEqual(
+            app.asset_assessment_label(asset, [(fake_kev, "Affected version range")]),
+            "Potential affected-version finding"
+        )
+
     def test_notebook_is_created_before_first_use_in_gui_builder(self):
         import ast
         import inspect
