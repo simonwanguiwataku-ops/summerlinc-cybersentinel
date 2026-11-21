@@ -27,5 +27,25 @@ class CyberSentinelLogicTests(unittest.TestCase):
         self.assertEqual(ransomware - base, 20)
         self.assertLessEqual(app.risk_priority_score(record, "Affected version range", 10.0), 100)
 
+    def test_notebook_is_created_before_first_use_in_gui_builder(self):
+        import ast
+        import inspect
+        tree = ast.parse(inspect.getsource(app.App.build_ui))
+        notebook_assignment = None
+        first_notebook_read = None
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                if any(isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name)
+                       and target.value.id == "self" and target.attr == "tabs"
+                       for target in node.targets):
+                    notebook_assignment = node.lineno
+            if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
+                if isinstance(node.value, ast.Name) and node.value.id == "self" and node.attr == "tabs":
+                    first_notebook_read = node.lineno if first_notebook_read is None else min(first_notebook_read, node.lineno)
+        self.assertIsNotNone(notebook_assignment, "build_ui must create the Notebook")
+        self.assertIsNotNone(first_notebook_read, "build_ui must use the Notebook")
+        self.assertLess(notebook_assignment, first_notebook_read,
+                        "Notebook must be initialized before any access")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
