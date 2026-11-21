@@ -1,6 +1,12 @@
-# Summerlinc CyberSentinel AI — Live KEV Intelligence Desktop v0.3
+# Summerlinc CyberSentinel AI — Live KEV Intelligence Desktop v0.3.2
 
 A local Windows desktop prototype for CyberSentinel's Live KEV Intelligence milestone. It downloads the official CISA Known Exploited Vulnerabilities (KEV) catalog, stores it in a local SQLite database, enriches selected CVEs from NVD, tracks software assets that the operator is authorized to assess, and presents a transparent risk-triage queue.
+
+## What's new in v0.3.2
+- Asset inventory now supports editing existing software records without deleting the local asset.
+- Asset table distinguishes KEV candidate count from assessment coverage; zero candidates are explicitly not presented as proof of safety.
+- Asset-entry guidance explains that each row should describe installed software (publisher, product, exact version), not only the computer make/model.
+- CPE 2.3 parsing handles escaped colons in vendor/product identifiers.
 
 ## What's new in v0.3
 - Risk dashboard with counts for KEV records, tracked assets, affected-version leads, items needing review, and ransomware-linked KEVs.
@@ -54,7 +60,7 @@ Labels: Critical (85–100), High (70–84), Elevated (50–69), Monitor (0–49
 ## Windows executable / installer
 - On Windows, run `build_windows_exe.bat` to create `dist\CyberSentinel\CyberSentinel.exe` using PyInstaller.
 - To build a conventional installer, install Inno Setup from https://jrsoftware.org/isinfo.php, open `CyberSentinel_Setup.iss`, and compile it after the PyInstaller build.
-- This package has not been compiled or code-signed on Windows in this environment. The build scripts are supplied, but the `.exe` and installer still need to be built on a Windows machine.
+- The GitHub Actions Windows pipeline builds the executable and installer on a Windows runner. A successful CI build verifies packaging; a final smoke test on a target Windows PC is still required. The installer is not code-signed.
 
 ## Official data sources
 - CISA KEV catalog: https://www.cisa.gov/known-exploited-vulnerabilities-catalog
