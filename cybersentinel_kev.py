@@ -254,7 +254,7 @@ def priority_label(score):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Summerlinc CyberSentinel AI — Live KEV Intelligence v0.3")
+        self.title("Summerlinc CyberSentinel AI — Live KEV Intelligence v0.3.1")
         self.geometry("1180x760")
         self.minsize(920, 600)
         self.status = tk.StringVar(value=f"Local database: {DB_PATH}")
