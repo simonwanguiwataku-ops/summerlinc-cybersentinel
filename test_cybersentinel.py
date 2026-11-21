@@ -55,6 +55,31 @@ class CyberSentinelLogicTests(unittest.TestCase):
         self.assertEqual(product, "log4j:core")
         self.assertEqual(version, "2.14.1")
 
+    def test_asset_edit_preserves_record_id_and_updates_fields(self):
+        import tempfile
+        original_db_path = app.DB_PATH
+        try:
+            with tempfile.TemporaryDirectory(prefix="cybersentinel-asset-test-") as tmp:
+                app.DB_PATH = Path(tmp) / "assets.sqlite3"
+                app.init_db()
+                original = {
+                    "organization": "Test Org", "asset_name": "laptop",
+                    "vendor": "WD", "product": "HP ProBook", "version": "7",
+                    "environment": "test", "owner": "tester", "notes": ""
+                }
+                asset_id = app.save_asset_record(original)
+                corrected = dict(original, vendor="Microsoft", product="Windows 7", version="6.1")
+                updated_id = app.save_asset_record(corrected, asset_id)
+                self.assertEqual(updated_id, asset_id)
+                with app.db() as con:
+                    row = con.execute("SELECT * FROM assets WHERE id=?", (asset_id,)).fetchone()
+                self.assertEqual(row["vendor"], "Microsoft")
+                self.assertEqual(row["product"], "Windows 7")
+                self.assertEqual(row["version"], "6.1")
+                self.assertEqual(row["asset_name"], "laptop")
+        finally:
+            app.DB_PATH = original_db_path
+
     def test_zero_candidates_are_not_reported_as_safe(self):
         asset = {"asset_name": "laptop"}
         self.assertIn(
