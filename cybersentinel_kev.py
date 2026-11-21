@@ -270,6 +270,14 @@ class App(tk.Tk):
             while True:
                 message, refresh_dashboard = self.ui_messages.get_nowait()
                 self.status.set(message)
+                if message.startswith("Sync complete:"):
+                    self.sync_button.configure(state="normal", text="Sync CISA KEV now")
+                    messagebox.showinfo("CISA KEV synchronization", message)
+                elif message.startswith("Sync failed:") or message.startswith("SYNC ERROR:"):
+                    self.sync_button.configure(state="normal", text="Retry CISA KEV sync")
+                    messagebox.showerror("CISA KEV synchronization failed", message)
+                elif "NVD enrichment" in message:
+                    pass
                 if refresh_dashboard:
                     self.refresh_kev()
                     self.refresh_assets()
@@ -282,8 +290,14 @@ class App(tk.Tk):
         top = ttk.Frame(self, padding=12)
         top.pack(fill="x")
         ttk.Label(top, text="SUMMERLINC CYBERSENTINEL AI", font=("Segoe UI", 16, "bold")).pack(side="left")
-        ttk.Button(top, text="Sync CISA KEV now", command=self.sync).pack(side="right")
+        self.sync_button = ttk.Button(top, text="Sync CISA KEV now", command=self.sync)
+        self.sync_button.pack(side="right")
         ttk.Label(self, text="Discover. Test. Protect. Verify.", padding=(12,0)).pack(anchor="w")
+        # Prominent feedback: the former bottom-only status was easy to miss.
+        status_bar = ttk.Frame(self, padding=(12, 5))
+        status_bar.pack(fill="x", before=self.tabs)
+        ttk.Label(status_bar, text="LIVE STATUS:", font=("Segoe UI", 9, "bold")).pack(side="left")
+        ttk.Label(status_bar, textvariable=self.status, wraplength=900).pack(side="left", padx=(8, 0))
 
         self.tabs = ttk.Notebook(self)
         self.tabs.pack(fill="both", expand=True, padx=12, pady=10)
@@ -362,12 +376,18 @@ class App(tk.Tk):
         ttk.Label(self.asset_tab, text="Matches are preliminary. NVD CPE enrichment is required before version-aware conclusions; a match is not proof of exploitability.", foreground="#9a5b00", wraplength=1000).pack(anchor="w", pady=8)
 
     def sync(self):
-        self.status.set("Connecting to the official CISA KEV feed…")
+        self.status.set("SYNC STARTED — contacting the official CISA KEV feed. Please wait…")
+        self.sync_button.configure(state="disabled", text="Syncing…")
         def callback(msg):
             # Worker threads communicate through a queue; Tkinter is touched only
             # by process_ui_messages() on the main application thread.
             self.ui_messages.put((msg, True))
-        threading.Thread(target=sync_kev, args=(callback,), daemon=True, name="CISA-KEV-sync").start()
+        def run_sync():
+            try:
+                sync_kev(callback)
+            except Exception as exc:
+                callback(f"SYNC ERROR: {type(exc).__name__}: {exc}")
+        threading.Thread(target=run_sync, daemon=True, name="CISA-KEV-sync").start()
 
     def refresh_kev(self):
         q = norm(self.search_var.get())
